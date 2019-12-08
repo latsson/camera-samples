@@ -1,0 +1,41 @@
+
+{
+	"buildFiles" : 
+	[
+		"/Users/filar2/Programming/camera-samples/CameraXBasic/library/src/main/cpp/CMakeLists.txt"
+	],
+	"cFileExtensions" : [ "c" ],
+	"cleanCommands" : 
+	[
+		"/Users/filar2/Library/Android/sdk/cmake/3.6.4111459/bin/cmake --build /Users/filar2/Programming/camera-samples/CameraXBasic/library/.cxx/cmake/release/armeabi-v7a --target clean"
+	],
+	"libraries" : 
+	{
+		"yuv-decoder-Release-armeabi-v7a" : 
+		{
+			"abi" : "armeabi-v7a",
+			"artifactName" : "yuv-decoder",
+			"buildCommand" : "/Users/filar2/Library/Android/sdk/cmake/3.6.4111459/bin/cmake --build /Users/filar2/Programming/camera-samples/CameraXBasic/library/.cxx/cmake/release/armeabi-v7a --target yuv-decoder",
+			"buildType" : "release",
+			"files" : 
+			[
+				
+				{
+					"flags" : "  --target=armv7-none-linux-androideabi21 --gcc-toolchain=/Users/filar2/Library/Android/sdk/ndk/20.0.5594570/toolchains/llvm/prebuilt/darwin-x86_64 --sysroot=/Users/filar2/Library/Android/sdk/ndk/20.0.5594570/toolchains/llvm/prebuilt/darwin-x86_64/sysroot -Dyuv_decoder_EXPORTS  -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -fno-addrsig -march=armv7-a -mthumb -Wa,--noexecstack -Wformat -Werror=format-security  -Oz -DNDEBUG  -fPIC      -c ",
+					"src" : "/Users/filar2/Programming/camera-samples/CameraXBasic/library/src/main/cpp/yuv-decoder.c",
+					"workingDirectory" : "/Users/filar2/Programming/camera-samples/CameraXBasic/library/.cxx/cmake/release/armeabi-v7a"
+				}
+			],
+			"output" : "/Users/filar2/Programming/camera-samples/CameraXBasic/library/build/intermediates/cmake/release/obj/armeabi-v7a/libyuv-decoder.so",
+			"toolchain" : "6585826494424258024"
+		}
+	},
+	"toolchains" : 
+	{
+		"6585826494424258024" : 
+		{
+			"cCompilerExecutable" : "/Users/filar2/Library/Android/sdk/ndk/20.0.5594570/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang",
+			"cppCompilerExecutable" : "/Users/filar2/Library/Android/sdk/ndk/20.0.5594570/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++"
+		}
+	}
+}

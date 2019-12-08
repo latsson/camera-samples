@@ -67,6 +67,8 @@ android {
 }
 
 dependencies {
+    implementation project(':library')
+
     // Kotlin lang
     implementation 'androidx.core:core-ktx:1.1.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"

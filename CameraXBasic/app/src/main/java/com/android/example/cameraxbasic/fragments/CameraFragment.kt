@@ -18,9 +18,12 @@ package com.android.example.cameraxbasic.fragments
 
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.hardware.Camera
@@ -29,8 +32,11 @@ import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.DisplayMetrics
 import android.util.Log
+import android.util.Size
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.TextureView
@@ -38,6 +44,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.MimeTypeMap
 import android.widget.ImageButton
+import android.widget.ImageView
+import android.widget.SeekBar
+import android.widget.Toast
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraX
 import androidx.camera.core.ImageAnalysis
@@ -53,6 +62,7 @@ import androidx.navigation.Navigation
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.core.view.setPadding
+import androidx.exifinterface.media.ExifInterface
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -63,12 +73,20 @@ import com.android.example.cameraxbasic.R
 import com.android.example.cameraxbasic.utils.ANIMATION_FAST_MILLIS
 import com.android.example.cameraxbasic.utils.ANIMATION_SLOW_MILLIS
 import com.android.example.cameraxbasic.utils.AutoFitPreviewBuilder
+import com.android.example.cameraxbasic.utils.GPUImageFilterTools
+import com.android.example.cameraxbasic.utils.generateNV21Data
+import com.android.example.cameraxbasic.utils.rotate
 import com.android.example.cameraxbasic.utils.simulateClick
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
+import jp.co.cyberagent.android.gpuimage.GPUImageView
+import jp.co.cyberagent.android.gpuimage.util.Rotation
+import jp.co.cyberagent.android.gpuimage.util.TextureRotationUtil.getRotation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
 import java.lang.Exception
 import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
@@ -90,9 +108,13 @@ typealias LumaListener = (luma: Double) -> Unit
  * - Image analysis
  */
 class CameraFragment : Fragment() {
+    private var filterAdjuster: GPUImageFilterTools.FilterAdjuster? = null
 
     private lateinit var container: ConstraintLayout
     private lateinit var viewFinder: TextureView
+    private lateinit var gpuImageView: GPUImageView
+    //private lateinit var gpuSaveImage: GPUImageView
+    private lateinit var seekBar: SeekBar
     private lateinit var outputDirectory: File
     private lateinit var broadcastManager: LocalBroadcastManager
     private lateinit var mainExecutor: Executor
@@ -199,28 +221,120 @@ class CameraFragment : Fragment() {
         override fun onImageSaved(photoFile: File) {
             Log.d(TAG, "Photo capture succeeded: ${photoFile.absolutePath}")
 
+            //val options = BitmapFactory.Options()
+            //options.inPreferredConfig = Bitmap.Config.ARGB_8888
+            val bitmap = BitmapFactory.decodeFile(photoFile.path)
+            Log.d(TAG, "Bitmap width: " + bitmap.width + ", height: " + bitmap.height)
 
-            // We can only change the foreground Drawable using API level 23+ API
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-
-                // Update the gallery thumbnail with latest picture taken
-                setGalleryThumbnail(photoFile)
+            val exif = ExifInterface(photoFile.absoluteFile.toString())
+            val rotatedBitmap = when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> bitmap.rotate(90F)
+                ExifInterface.ORIENTATION_ROTATE_180 -> bitmap.rotate(180F)
+                ExifInterface.ORIENTATION_ROTATE_270 -> bitmap.rotate(270F)
+                else -> bitmap
             }
+            bitmap.recycle()
 
-            // Implicit broadcasts will be ignored for devices running API
-            // level >= 24, so if you only target 24+ you can remove this statement
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-                requireActivity().sendBroadcast(
-                        Intent(Camera.ACTION_NEW_PICTURE, Uri.fromFile(photoFile)))
+            //val rotatedBitmap = bitmap.rotate(90F) // value must be float
+            gpuImageView.requestRender()
+            val filteredBitmap = gpuImageView.gpuImage.getBitmapWithFilterApplied(rotatedBitmap)
+            Log.d(TAG, "filteredBitmap width: " + filteredBitmap.width + ", height: " + filteredBitmap.height)
+            saveImage(filteredBitmap, context!!, "GPUImage")
+
+            //Create folder !exist
+            /*
+            val folderPath =
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).absolutePath + "/" + "PictoGPUImage"
+            val folder = File(folderPath)
+            if (!folder.exists()) {
+                val createdDir = folder.mkdirs();
+                Log.d(TAG, "Created dir: $createdDir")
             }
+             */
 
-            // If the folder selected is an external media directory, this is unnecessary
-            // but otherwise other apps will not be able to access our images unless we
-            // scan them using [MediaScannerConnection]
-            val mimeType = MimeTypeMap.getSingleton()
-                    .getMimeTypeFromExtension(photoFile.extension)
-            MediaScannerConnection.scanFile(
-                    context, arrayOf(photoFile.absolutePath), arrayOf(mimeType), null)
+            /*
+            val fileName = System.currentTimeMillis().toString() + ".jpg"
+            imageView.setImageBitmap(filteredBitmap)
+
+            gpuSaveImage.gpuImage.saveToPictures(filteredBitmap,"GPUImage", fileName) { uri ->
+                Log.d(TAG, "Filtered photo saved: $uri")
+                val path = uri.path ?: return@saveToPictures
+
+                val filteredPhotoFile = File(path)
+                // We can only change the foreground Drawable using API level 23+ API
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+
+                    // Update the gallery thumbnail with latest picture taken
+                    setGalleryThumbnail(filteredPhotoFile)
+                }
+
+                // Implicit broadcasts will be ignored for devices running API
+                // level >= 24, so if you only target 24+ you can remove this statement
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                    requireActivity().sendBroadcast(
+                            Intent(Camera.ACTION_NEW_PICTURE, Uri.fromFile(filteredPhotoFile)))
+                }
+
+                // If the folder selected is an external media directory, this is unnecessary
+                // but otherwise other apps will not be able to access our images unless we
+                // scan them using [MediaScannerConnection]
+                val mimeType = MimeTypeMap.getSingleton()
+                        .getMimeTypeFromExtension(filteredPhotoFile.extension)
+                MediaScannerConnection.scanFile(
+                        context, arrayOf(filteredPhotoFile.absolutePath), arrayOf(mimeType), null)
+            }
+             */
+        }
+    }
+
+    private fun saveImage(bitmap: Bitmap, context: Context, folderName: String) {
+        // TODO
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            val values = contentValues()
+            values.put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/" + folderName)
+            values.put(MediaStore.Images.Media.IS_PENDING, true)
+            // RELATIVE_PATH and IS_PENDING are introduced in API 29.
+
+            val uri: Uri? = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                saveImageToStream(bitmap, context.contentResolver.openOutputStream(uri))
+                values.put(MediaStore.Images.Media.IS_PENDING, false)
+                context.contentResolver.update(uri, values, null, null)
+            }
+        } else {
+            val directory = File(Environment.getExternalStorageDirectory().toString() + File.separator + folderName)
+            // getExternalStorageDirectory is deprecated in API 29
+
+            if (!directory.exists()) {
+                directory.mkdirs()
+            }
+            val fileName = System.currentTimeMillis().toString() + ".jpg"
+            val file = File(directory, fileName)
+            saveImageToStream(bitmap, FileOutputStream(file))
+            val values = contentValues()
+            values.put(MediaStore.Images.Media.DATA, file.absolutePath)
+            // .DATA is deprecated in API 29
+            context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            Toast.makeText(context, "Saved: ${file.absolutePath}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun contentValues() : ContentValues {
+        val values = ContentValues()
+        values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpg")
+        values.put(MediaStore.Images.Media.DATE_ADDED, System.currentTimeMillis() / 1000);
+        values.put(MediaStore.Images.Media.DATE_TAKEN, System.currentTimeMillis());
+        return values
+    }
+
+    private fun saveImageToStream(bitmap: Bitmap, outputStream: OutputStream?) {
+        if (outputStream != null) {
+            try {
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 70, outputStream)
+                outputStream.close()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -229,6 +343,13 @@ class CameraFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         container = view as ConstraintLayout
         viewFinder = container.findViewById(R.id.view_finder)
+
+        gpuImageView = container.findViewById(R.id.GPUImageView)
+        //gpuImageView.setRotation(getRotation(cameraLoader.getCameraOrientation()))
+        gpuImageView.setRenderMode(GPUImageView.RENDERMODE_CONTINUOUSLY)
+
+        //gpuSaveImage = container.findViewById(R.id.GPUSaveImage)
+
         broadcastManager = LocalBroadcastManager.getInstance(view.context)
 
         // Set up the intent filter that will receive events from our main activity
@@ -274,6 +395,7 @@ class CameraFragment : Fragment() {
             setLensFacing(lensFacing)
             // We request aspect ratio but no resolution to let CameraX optimize our use cases
             setTargetAspectRatio(screenAspectRatio)
+            //setTargetAspectRatio(AspectRatio.RATIO_4_3)
             // Set initial target rotation, we will have to call this again if rotation changes
             // during the lifecycle of this use case
             setTargetRotation(viewFinder.display.rotation)
@@ -285,10 +407,11 @@ class CameraFragment : Fragment() {
         // Set up the capture use case to allow users to take photos
         val imageCaptureConfig = ImageCaptureConfig.Builder().apply {
             setLensFacing(lensFacing)
-            setCaptureMode(CaptureMode.MIN_LATENCY)
+            setCaptureMode(CaptureMode.MAX_QUALITY)
             // We request aspect ratio but no resolution to match preview config but letting
             // CameraX optimize for whatever specific resolution best fits requested capture mode
             setTargetAspectRatio(screenAspectRatio)
+            //setTargetAspectRatio(AspectRatio.RATIO_4_3)
             // Set initial target rotation, we will have to call this again if rotation changes
             // during the lifecycle of this use case
             setTargetRotation(viewFinder.display.rotation)
@@ -296,31 +419,21 @@ class CameraFragment : Fragment() {
 
         imageCapture = ImageCapture(imageCaptureConfig)
 
-        // Setup image analysis pipeline that computes average pixel luminance in real time
-        val analyzerConfig = ImageAnalysisConfig.Builder().apply {
-            setLensFacing(lensFacing)
-            // In our analysis, we care more about the latest image than analyzing *every* image
-            setImageReaderMode(ImageAnalysis.ImageReaderMode.ACQUIRE_LATEST_IMAGE)
-            // Set initial target rotation, we will have to call this again if rotation changes
-            // during the lifecycle of this use case
-            setTargetRotation(viewFinder.display.rotation)
-        }.build()
-
-        imageAnalyzer = ImageAnalysis(analyzerConfig).apply {
-            setAnalyzer(mainExecutor,
-                    LuminosityAnalyzer { luma ->
-                        // Values returned from our analyzer are passed to the attached listener
-                        // We log image analysis results here --
-                        // you should do something useful instead!
-                        val fps = (analyzer as LuminosityAnalyzer).framesPerSecond
-                        Log.d(TAG, "Average luminosity: $luma. " +
-                                "Frames per second: ${"%.01f".format(fps)}")
-                    })
+        val imageAnalysisConfig = ImageAnalysisConfig.Builder()
+                .setTargetResolution(Size(480, 640))
+                .setImageReaderMode(ImageAnalysis.ImageReaderMode.ACQUIRE_LATEST_IMAGE)
+                .build()
+        imageAnalyzer = ImageAnalysis(imageAnalysisConfig).apply {
+            setAnalyzer(mainExecutor, ImageAnalysis.Analyzer { image, rotationDegrees ->
+                val rotation = Rotation.fromInt(rotationDegrees)
+                gpuImageView.setRotation(rotation)
+                //gpuSaveImage.setRotation(rotation)
+                gpuImageView.updatePreviewFrame(image.image?.generateNV21Data(), image.width, image.height)
+            })
         }
 
         // Apply declared configs to CameraX using the same lifecycle owner
-        CameraX.bindToLifecycle(
-                viewLifecycleOwner, preview, imageCapture, imageAnalyzer)
+        CameraX.bindToLifecycle(viewLifecycleOwner, preview, imageCapture, imageAnalyzer)
     }
 
     /**
@@ -387,6 +500,26 @@ class CameraFragment : Fragment() {
 
         // Listener for button used to switch cameras
         controls.findViewById<ImageButton>(R.id.camera_switch_button).setOnClickListener {
+
+            GPUImageFilterTools.showDialog(it.context) { filter ->
+                if (gpuImageView.filter == null || gpuImageView.filter!!.javaClass != filter.javaClass) {
+                    gpuImageView.filter = filter
+                    filterAdjuster = GPUImageFilterTools.FilterAdjuster(filter)
+                    if (filterAdjuster!!.canAdjust()) {
+                        seekBar.visibility = View.VISIBLE
+                        filterAdjuster!!.adjust(seekBar.progress)
+                    } else {
+                        seekBar.visibility = View.GONE
+                    }
+                }
+/*
+                if (gpuSaveImage.filter == null || gpuSaveImage.filter!!.javaClass != filter.javaClass) {
+                    gpuSaveImage.filter = filter
+                    gpuSaveImage.requestRender()
+                }
+ */
+            }
+            /*
             lensFacing = if (CameraX.LensFacing.FRONT == lensFacing) {
                 CameraX.LensFacing.BACK
             } else {
@@ -402,6 +535,7 @@ class CameraFragment : Fragment() {
             } catch (exc: Exception) {
                 // Do nothing
             }
+             */
         }
 
         // Listener for button used to view last photo
@@ -409,89 +543,18 @@ class CameraFragment : Fragment() {
             Navigation.findNavController(requireActivity(), R.id.fragment_container).navigate(
                     CameraFragmentDirections.actionCameraToGallery(outputDirectory.absolutePath))
         }
-    }
 
-
-    /**
-     * Our custom image analysis class.
-     *
-     * <p>All we need to do is override the function `analyze` with our desired operations. Here,
-     * we compute the average luminosity of the image by looking at the Y plane of the YUV frame.
-     */
-    private class LuminosityAnalyzer(listener: LumaListener? = null) : ImageAnalysis.Analyzer {
-        private val frameRateWindow = 8
-        private val frameTimestamps = ArrayDeque<Long>(5)
-        private val listeners = ArrayList<LumaListener>().apply { listener?.let { add(it) } }
-        private var lastAnalyzedTimestamp = 0L
-        var framesPerSecond: Double = -1.0
-            private set
-
-        /**
-         * Used to add listeners that will be called with each luma computed
-         */
-        fun onFrameAnalyzed(listener: LumaListener) = listeners.add(listener)
-
-        /**
-         * Helper extension function used to extract a byte array from an image plane buffer
-         */
-        private fun ByteBuffer.toByteArray(): ByteArray {
-            rewind()    // Rewind the buffer to zero
-            val data = ByteArray(remaining())
-            get(data)   // Copy the buffer into a byte array
-            return data // Return the byte array
-        }
-
-        /**
-         * Analyzes an image to produce a result.
-         *
-         * <p>The caller is responsible for ensuring this analysis method can be executed quickly
-         * enough to prevent stalls in the image acquisition pipeline. Otherwise, newly available
-         * images will not be acquired and analyzed.
-         *
-         * <p>The image passed to this method becomes invalid after this method returns. The caller
-         * should not store external references to this image, as these references will become
-         * invalid.
-         *
-         * @param image image being analyzed VERY IMPORTANT: do not close the image, it will be
-         * automatically closed after this method returns
-         * @return the image analysis result
-         */
-        override fun analyze(image: ImageProxy, rotationDegrees: Int) {
-            // If there are no listeners attached, we don't need to perform analysis
-            if (listeners.isEmpty()) return
-
-            // Keep track of frames analyzed
-            val currentTime = System.currentTimeMillis()
-            frameTimestamps.push(currentTime)
-
-            // Compute the FPS using a moving average
-            while (frameTimestamps.size >= frameRateWindow) frameTimestamps.removeLast()
-            val timestampFirst = frameTimestamps.peekFirst() ?: currentTime
-            val timestampLast = frameTimestamps.peekLast() ?: currentTime
-            framesPerSecond = 1.0 / ((timestampFirst - timestampLast) /
-                    frameTimestamps.size.coerceAtLeast(1).toDouble()) * 1000.0
-
-            // Calculate the average luma no more often than every second
-            if (frameTimestamps.first - lastAnalyzedTimestamp >= TimeUnit.SECONDS.toMillis(1)) {
-                lastAnalyzedTimestamp = frameTimestamps.first
-
-                // Since format in ImageAnalysis is YUV, image.planes[0] contains the luminance
-                //  plane
-                val buffer = image.planes[0].buffer
-
-                // Extract image data from callback object
-                val data = buffer.toByteArray()
-
-                // Convert the data into an array of pixel values ranging 0-255
-                val pixels = data.map { it.toInt() and 0xFF }
-
-                // Compute average luminance for the image
-                val luma = pixels.average()
-
-                // Call all listeners with new value
-                listeners.forEach { it(luma) }
+        seekBar = controls.findViewById<SeekBar>(R.id.seekBar)
+        seekBar.setOnSeekBarChangeListener(
+                object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                filterAdjuster?.adjust(progress)
+                //gpuSaveImage.requestRender()
             }
-        }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar) {}
+        })
     }
 
     companion object {
@@ -505,5 +568,8 @@ class CameraFragment : Fragment() {
         private fun createFile(baseFolder: File, format: String, extension: String) =
                 File(baseFolder, SimpleDateFormat(format, Locale.US)
                         .format(System.currentTimeMillis()) + extension)
+
+        private fun getName(format: String) = SimpleDateFormat(format, Locale.US)
+                .format(System.currentTimeMillis())
     }
 }
