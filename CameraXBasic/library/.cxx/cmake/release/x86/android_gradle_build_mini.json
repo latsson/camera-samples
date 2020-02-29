@@ -1,14 +1,17 @@
 {
   "buildFiles": [
-    "/Users/filar2/Programming/camera-samples/CameraXBasic/library/src/main/cpp/CMakeLists.txt"
+    "/Users/filar2/Library/Android/sdk/ndk/20.0.5594570/build/cmake/platforms.cmake",
+    "/Users/filar2/Programming/camera-samples/CameraXBasic/library/src/main/cpp/CMakeLists.txt",
+    "/Users/filar2/Library/Android/sdk/ndk/20.0.5594570/build/cmake/android.toolchain.cmake"
   ],
   "cleanCommands": [
-    "/Users/filar2/Library/Android/sdk/cmake/3.6.4111459/bin/cmake --build /Users/filar2/Programming/camera-samples/CameraXBasic/library/.cxx/cmake/release/x86 --target clean"
+    "/Users/filar2/Library/Android/sdk/cmake/3.10.2.4988404/bin/ninja -C \"/Users/filar2/Programming/camera-samples/CameraXBasic/library/.cxx/cmake/release/x86\" clean"
   ],
+  "buildTargetsCommand": "/Users/filar2/Library/Android/sdk/cmake/3.10.2.4988404/bin/ninja  -C \"/Users/filar2/Programming/camera-samples/CameraXBasic/library/.cxx/cmake/release/x86\" {LIST_OF_TARGETS_TO_BUILD}",
   "libraries": {
     "yuv-decoder-Release-x86": {
       "artifactName": "yuv-decoder",
-      "buildCommand": "/Users/filar2/Library/Android/sdk/cmake/3.6.4111459/bin/cmake --build /Users/filar2/Programming/camera-samples/CameraXBasic/library/.cxx/cmake/release/x86 --target yuv-decoder",
+      "buildCommand": "/Users/filar2/Library/Android/sdk/cmake/3.10.2.4988404/bin/ninja -C \"/Users/filar2/Programming/camera-samples/CameraXBasic/library/.cxx/cmake/release/x86\" yuv-decoder",
       "abi": "x86",
       "output": "/Users/filar2/Programming/camera-samples/CameraXBasic/library/build/intermediates/cmake/release/obj/x86/libyuv-decoder.so"
     }

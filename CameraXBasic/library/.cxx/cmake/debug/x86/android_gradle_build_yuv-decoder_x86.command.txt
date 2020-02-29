@@ -1,0 +1,7 @@
+Executable : /Users/filar2/Library/Android/sdk/cmake/3.10.2.4988404/bin/ninja
+arguments : 
+-C
+/Users/filar2/Programming/camera-samples/CameraXBasic/library/.cxx/cmake/debug/x86
+yuv-decoder
+jvmArgs : 
+
