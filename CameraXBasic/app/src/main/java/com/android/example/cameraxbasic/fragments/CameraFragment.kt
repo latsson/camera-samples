@@ -38,6 +38,8 @@ import android.util.Log
 import android.util.Size
 import android.view.KeyEvent
 import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
@@ -295,6 +297,22 @@ class CameraFragment : Fragment() {
 
             // Bind use cases
             bindCameraUseCases()
+        }
+
+        val listener = object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val scale = camera!!.cameraInfo.zoomState.value!!.zoomRatio * detector.scaleFactor
+                camera!!.cameraControl.setZoomRatio(scale)
+                return true
+            }
+        }
+
+        val scaleGestureDetector = ScaleGestureDetector(context, listener)
+
+        viewFinder.setOnTouchListener { _, event ->
+
+            scaleGestureDetector.onTouchEvent(event)
+            return@setOnTouchListener true
         }
     }
 
